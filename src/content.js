@@ -44,6 +44,7 @@
       const threshold = largeText ? 3.0 : 4.5;
 
       if (ratio < threshold) {
+        const suggestedTextColor = suggestReadableTextColor(backgroundColor, threshold);
         findings.push({
           type: "low-contrast-text",
           severity: ratio < threshold - 1 ? "high" : "medium",
@@ -56,7 +57,10 @@
           details: {
             contrastRatio: Number(ratio.toFixed(2)),
             requiredRatio: threshold,
-            fontSizePx: Number(fontSizePx.toFixed(2))
+            fontSizePx: Number(fontSizePx.toFixed(2)),
+            textColor: colorToCss(color),
+            backgroundColor: colorToCss(backgroundColor),
+            suggestedTextColor
           }
         });
       }
@@ -373,17 +377,17 @@
           count: 1,
           selectors: [item.selector],
           examples: item.sample ? [trimSample(item.sample)] : [],
-          items: [item]
+          instances: [makeInstance(item)]
         });
         continue;
       }
 
       existing.count += 1;
       existing.selectors.push(item.selector);
-      existing.items.push(item);
       if (existing.examples.length < 3 && item.sample) {
         existing.examples.push(trimSample(item.sample));
       }
+      existing.instances.push(makeInstance(item));
 
       if (severityRank(item.severity) > severityRank(existing.severity)) {
         existing.severity = item.severity;
@@ -402,17 +406,23 @@
         group.type === "low-contrast-text" && typeof group.details?.requiredRatio === "number"
           ? `Increase contrast between text and background. Target at least ${group.details.requiredRatio}:1 for the grouped examples.`
           : group.recommendation,
-      items: group.items.map((entry) => ({
-        ...entry,
-        sample: trimSample(entry.sample)
-      })),
       details: {
         ...group.details,
         count: group.count,
         selectors: group.selectors.slice(0, 5),
         examples: group.examples
-      }
+      },
+      instances: group.instances.slice(0, 60)
     }));
+  }
+
+  function makeInstance(item) {
+    return {
+      selector: item.selector,
+      sample: trimSample(item.sample),
+      severity: item.severity,
+      details: item.details
+    };
   }
 
   function severityRank(severity) {
@@ -440,6 +450,14 @@
       ...newDetails
     };
 
+    const existingContrast = typeof existingDetails.contrastRatio === "number" ? existingDetails.contrastRatio : null;
+    const newContrast = typeof newDetails.contrastRatio === "number" ? newDetails.contrastRatio : null;
+    if (existingContrast !== null && newContrast !== null && newContrast < existingContrast) {
+      merged.textColor = newDetails.textColor;
+      merged.backgroundColor = newDetails.backgroundColor;
+      merged.suggestedTextColor = newDetails.suggestedTextColor;
+    }
+
     if (typeof existingDetails.requiredRatio === "number" || typeof newDetails.requiredRatio === "number") {
       merged.requiredRatio = Math.max(existingDetails.requiredRatio ?? 0, newDetails.requiredRatio ?? 0);
     }
@@ -457,5 +475,28 @@
     }
 
     return merged;
+  }
+
+  function suggestReadableTextColor(background, threshold) {
+    const black = { r: 0, g: 0, b: 0, a: 1 };
+    const white = { r: 255, g: 255, b: 255, a: 1 };
+    const blackRatio = contrastRatio(black, background);
+    const whiteRatio = contrastRatio(white, background);
+
+    if (blackRatio >= threshold && blackRatio >= whiteRatio) {
+      return colorToCss(black);
+    }
+    if (whiteRatio >= threshold && whiteRatio >= blackRatio) {
+      return colorToCss(white);
+    }
+
+    return blackRatio >= whiteRatio ? colorToCss(black) : colorToCss(white);
+  }
+
+  function colorToCss(color) {
+    const r = Math.round(color.r);
+    const g = Math.round(color.g);
+    const b = Math.round(color.b);
+    return `rgb(${r}, ${g}, ${b})`;
   }
 })();
