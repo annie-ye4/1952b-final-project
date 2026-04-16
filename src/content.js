@@ -1,0 +1,330 @@
+(() => {
+  const LIMITATIONS = [
+    "Automated checks cannot understand design intent, reading order quality, or whether content is truly understandable.",
+    "Color contrast results may be approximate when gradients, images, overlays, transparency, or animations are involved.",
+    "This tool focuses on low-vision readability signals only; it does not cover all disability needs or all WCAG success criteria.",
+    "Manual testing with zoom, high-contrast modes, and assistive tech is still required."
+  ];
+
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (!message || message.type !== "RUN_LOW_VISION_AUDIT") {
+      return;
+    }
+
+    try {
+      const findings = runLowVisionAudit();
+      sendResponse({
+        ok: true,
+        impairmentFocus: "Low vision (contrast sensitivity/readability)",
+        findings,
+        limitations: LIMITATIONS,
+        scannedAt: new Date().toISOString(),
+        pageTitle: document.title || "Untitled page",
+        pageUrl: location.href
+      });
+    } catch (error) {
+      sendResponse({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+        limitations: LIMITATIONS
+      });
+    }
+
+    return true;
+  });
+
+  function runLowVisionAudit() {
+    const textSamples = collectVisibleTextSamples(800);
+    const findings = [];
+
+    for (const sample of textSamples) {
+      const { element, text, fontSizePx, lineHeightPx, fontWeight, color, backgroundColor } = sample;
+      const ratio = contrastRatio(color, backgroundColor);
+      const largeText = isLargeText(fontSizePx, fontWeight);
+      const threshold = largeText ? 3.0 : 4.5;
+
+      if (ratio < threshold) {
+        findings.push({
+          type: "low-contrast-text",
+          severity: ratio < threshold - 1 ? "high" : "medium",
+          summary: "Text contrast is below recommended minimum for low-vision readability.",
+          whyItMatters:
+            "People with low vision or reduced contrast sensitivity may struggle to distinguish text from its background, especially on bright screens or in glare.",
+          recommendation: `Increase contrast between text and background. Target at least ${threshold}:1 for this text size.`,
+          selector: shortSelector(element),
+          sample: trimSample(text),
+          details: {
+            contrastRatio: Number(ratio.toFixed(2)),
+            requiredRatio: threshold,
+            fontSizePx: Number(fontSizePx.toFixed(2))
+          }
+        });
+      }
+
+      if (fontSizePx < 12) {
+        findings.push({
+          type: "very-small-text",
+          severity: "high",
+          summary: "Very small text detected.",
+          whyItMatters:
+            "Very small text can be unreadable for many low-vision users, even before zooming or magnification is applied.",
+          recommendation: "Use a larger default text size (generally 16px body text or larger where practical).",
+          selector: shortSelector(element),
+          sample: trimSample(text),
+          details: {
+            fontSizePx: Number(fontSizePx.toFixed(2))
+          }
+        });
+      } else if (fontSizePx < 14) {
+        findings.push({
+          type: "small-text",
+          severity: "medium",
+          summary: "Small text may reduce readability.",
+          whyItMatters:
+            "Low-vision users often need larger text to maintain speed and accuracy while reading.",
+          recommendation: "Consider increasing text size and preserving layout at browser zoom levels.",
+          selector: shortSelector(element),
+          sample: trimSample(text),
+          details: {
+            fontSizePx: Number(fontSizePx.toFixed(2))
+          }
+        });
+      }
+
+      if (text.length > 80 && lineHeightPx > 0 && lineHeightPx < fontSizePx * 1.3) {
+        findings.push({
+          type: "tight-line-height",
+          severity: "medium",
+          summary: "Line height is tight for a long text block.",
+          whyItMatters:
+            "Crowded lines can make tracking from one line to the next difficult, particularly for low-vision readers.",
+          recommendation: "Increase line-height to around 1.4-1.6 for paragraph text.",
+          selector: shortSelector(element),
+          sample: trimSample(text),
+          details: {
+            fontSizePx: Number(fontSizePx.toFixed(2)),
+            lineHeightPx: Number(lineHeightPx.toFixed(2))
+          }
+        });
+      }
+    }
+
+    return dedupeFindings(findings).slice(0, 150);
+  }
+
+  function collectVisibleTextSamples(maxCount) {
+    const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT);
+    const samples = [];
+
+    while (walker.nextNode() && samples.length < maxCount) {
+      const node = walker.currentNode;
+      const raw = node.textContent || "";
+      const text = raw.replace(/\s+/g, " ").trim();
+      if (text.length < 3) {
+        continue;
+      }
+
+      const element = node.parentElement;
+      if (!element || !isEligibleTextContainer(element) || !isVisible(element)) {
+        continue;
+      }
+
+      const style = getComputedStyle(element);
+      const fontSizePx = parsePx(style.fontSize);
+      const lineHeightPx = parseLineHeightPx(style.lineHeight, fontSizePx);
+      const fontWeight = parseFontWeight(style.fontWeight);
+      const color = parseCssColor(style.color);
+      const backgroundColor = resolveEffectiveBackgroundColor(element);
+
+      if (!color || !backgroundColor || fontSizePx <= 0) {
+        continue;
+      }
+
+      samples.push({
+        element,
+        text,
+        fontSizePx,
+        lineHeightPx,
+        fontWeight,
+        color,
+        backgroundColor
+      });
+    }
+
+    return samples;
+  }
+
+  function isEligibleTextContainer(element) {
+    const tag = element.tagName.toLowerCase();
+    return !["script", "style", "noscript", "svg", "canvas", "code", "pre"].includes(tag);
+  }
+
+  function isVisible(element) {
+    const style = getComputedStyle(element);
+    if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) {
+      return false;
+    }
+
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return false;
+    }
+
+    return true;
+  }
+
+  function parsePx(value) {
+    if (!value) {
+      return 0;
+    }
+    if (value.endsWith("px")) {
+      return Number.parseFloat(value) || 0;
+    }
+    return Number.parseFloat(value) || 0;
+  }
+
+  function parseLineHeightPx(lineHeight, fontSizePx) {
+    if (!lineHeight || lineHeight === "normal") {
+      return fontSizePx * 1.2;
+    }
+    if (lineHeight.endsWith("px")) {
+      return Number.parseFloat(lineHeight) || fontSizePx * 1.2;
+    }
+    const numeric = Number.parseFloat(lineHeight);
+    if (!Number.isNaN(numeric)) {
+      return numeric * fontSizePx;
+    }
+    return fontSizePx * 1.2;
+  }
+
+  function parseFontWeight(weight) {
+    const numeric = Number.parseInt(String(weight), 10);
+    if (!Number.isNaN(numeric)) {
+      return numeric;
+    }
+    return String(weight).toLowerCase() === "bold" ? 700 : 400;
+  }
+
+  function parseCssColor(value) {
+    if (!value) {
+      return null;
+    }
+
+    const rgbMatch = value.match(/rgba?\(([^)]+)\)/i);
+    if (!rgbMatch) {
+      return null;
+    }
+
+    const parts = rgbMatch[1].split(",").map((part) => part.trim());
+    if (parts.length < 3) {
+      return null;
+    }
+
+    const r = Number.parseFloat(parts[0]);
+    const g = Number.parseFloat(parts[1]);
+    const b = Number.parseFloat(parts[2]);
+    const a = parts.length > 3 ? Number.parseFloat(parts[3]) : 1;
+
+    if ([r, g, b].some((n) => Number.isNaN(n))) {
+      return null;
+    }
+
+    return { r, g, b, a: Number.isNaN(a) ? 1 : a };
+  }
+
+  function resolveEffectiveBackgroundColor(element) {
+    let current = element;
+    let color = { r: 255, g: 255, b: 255, a: 1 };
+
+    while (current && current !== document.documentElement) {
+      const bg = parseCssColor(getComputedStyle(current).backgroundColor);
+      if (bg && bg.a > 0) {
+        color = compositeColors(bg, color);
+        if (color.a >= 0.99) {
+          break;
+        }
+      }
+      current = current.parentElement;
+    }
+
+    return { r: color.r, g: color.g, b: color.b, a: 1 };
+  }
+
+  function compositeColors(foreground, background) {
+    const fgA = clamp01(foreground.a);
+    const bgA = clamp01(background.a);
+    const outA = fgA + bgA * (1 - fgA);
+
+    if (outA <= 0) {
+      return { r: 255, g: 255, b: 255, a: 0 };
+    }
+
+    return {
+      r: (foreground.r * fgA + background.r * bgA * (1 - fgA)) / outA,
+      g: (foreground.g * fgA + background.g * bgA * (1 - fgA)) / outA,
+      b: (foreground.b * fgA + background.b * bgA * (1 - fgA)) / outA,
+      a: outA
+    };
+  }
+
+  function clamp01(value) {
+    return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 1));
+  }
+
+  function isLargeText(fontSizePx, fontWeight) {
+    return fontSizePx >= 24 || (fontSizePx >= 18.66 && fontWeight >= 700);
+  }
+
+  function contrastRatio(foreground, background) {
+    const fg = relativeLuminance(foreground);
+    const bg = relativeLuminance(background);
+    const lighter = Math.max(fg, bg);
+    const darker = Math.min(fg, bg);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  function relativeLuminance(color) {
+    const r = channelToLinear(color.r / 255);
+    const g = channelToLinear(color.g / 255);
+    const b = channelToLinear(color.b / 255);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  function channelToLinear(value) {
+    return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+  }
+
+  function shortSelector(element) {
+    if (!element) {
+      return "unknown";
+    }
+
+    const id = element.id ? `#${element.id}` : "";
+    const classes = Array.from(element.classList).slice(0, 2).join(".");
+    const cls = classes ? `.${classes}` : "";
+    return `${element.tagName.toLowerCase()}${id}${cls}`;
+  }
+
+  function trimSample(text) {
+    if (!text) {
+      return "";
+    }
+    return text.length > 120 ? `${text.slice(0, 117)}...` : text;
+  }
+
+  function dedupeFindings(items) {
+    const seen = new Set();
+    const result = [];
+
+    for (const item of items) {
+      const key = [item.type, item.selector, item.sample].join("|");
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      result.push(item);
+    }
+
+    return result;
+  }
+})();

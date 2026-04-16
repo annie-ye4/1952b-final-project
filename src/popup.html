@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Low Vision Checker</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="hero">
+        <p class="eyebrow">Accessibility Focus</p>
+        <h1>Low Vision Checker</h1>
+        <p class="subtitle">
+          Detects common readability barriers for people with low vision, then explains why each issue matters.
+        </p>
+      </header>
+
+      <button id="runAudit" class="run-btn" type="button">Run audit on this tab</button>
+
+      <section class="panel" aria-live="polite">
+        <h2>Results</h2>
+        <p id="status" class="status">Ready to scan.</p>
+        <ul id="findings" class="findings"></ul>
+      </section>
+
+      <section class="panel limits">
+        <h2>Limits of automated checks</h2>
+        <ul id="limitations" class="limitations"></ul>
+      </section>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

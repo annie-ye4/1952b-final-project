@@ -1,0 +1,148 @@
+:root {
+  --bg: #f3efe6;
+  --ink: #16211a;
+  --muted: #4f5d51;
+  --card: #fffaf0;
+  --accent: #0f766e;
+  --accent-soft: #d7efe9;
+  --warn: #b45309;
+  --error: #9f1239;
+  --border: #c6bca8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  width: 380px;
+  max-height: 600px;
+  overflow: auto;
+  font-family: "Source Sans 3", "Segoe UI", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 10% 10%, #efe8d7 0%, transparent 35%),
+    radial-gradient(circle at 90% 20%, #d2e6dd 0%, transparent 30%),
+    var(--bg);
+}
+
+.app {
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: 1.4rem;
+  letter-spacing: 0.01em;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  font-size: 0.74rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.subtitle {
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.35;
+  font-size: 0.92rem;
+}
+
+.run-btn {
+  border: 1px solid #0f5f59;
+  background: linear-gradient(120deg, #115e59, #0f766e);
+  color: #f7fff8;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.run-btn:hover {
+  filter: brightness(1.05);
+}
+
+.panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.panel h2 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+.status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.findings,
+.limitations {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+}
+
+.finding {
+  border-left: 4px solid var(--accent);
+  padding-left: 8px;
+}
+
+.finding.severity-medium {
+  border-left-color: var(--warn);
+}
+
+.finding.severity-high {
+  border-left-color: var(--error);
+}
+
+.finding-title {
+  margin: 0;
+  font-weight: 700;
+  font-size: 0.92rem;
+}
+
+.finding-meta,
+.finding-why,
+.finding-fix,
+.finding-sample {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
+.finding-sample {
+  padding: 6px;
+  border-radius: 8px;
+  background: #f0eadc;
+}
+
+.pill {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  color: #fff;
+  background: var(--accent);
+}
+
+.pill.medium {
+  background: var(--warn);
+}
+
+.pill.high {
+  background: var(--error);
+}

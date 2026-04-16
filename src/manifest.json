@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Low Vision Accessibility Checker",
+  "version": "1.0.0",
+  "description": "Finds common low-vision accessibility issues and explains why they matter.",
+  "action": {
+    "default_title": "Low Vision Checker",
+    "default_popup": "popup.html"
+  },
+  "permissions": ["activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
