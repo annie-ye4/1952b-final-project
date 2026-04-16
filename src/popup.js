@@ -37,7 +37,7 @@ function renderResults(data) {
   }
 
   setStatus(
-    `${findings.length} issue${findings.length === 1 ? "" : "s"} found on ${new URL(data.pageUrl).hostname}.`
+    `${findings.length} grouped issue${findings.length === 1 ? "" : "s"} found on ${new URL(data.pageUrl).hostname}.`
   );
 
   const fragment = document.createDocumentFragment();
@@ -49,6 +49,13 @@ function renderResults(data) {
     const title = document.createElement("p");
     title.className = "finding-title";
     title.textContent = finding.summary;
+
+    if (typeof finding.count === "number" && finding.count > 1) {
+      const count = document.createElement("span");
+      count.className = "pill count";
+      count.textContent = `${finding.count} similar`;
+      title.appendChild(count);
+    }
 
     const severityPill = document.createElement("span");
     severityPill.className = `pill ${finding.severity}`;
@@ -72,7 +79,7 @@ function renderResults(data) {
     if (finding.sample) {
       const sample = document.createElement("p");
       sample.className = "finding-sample";
-      sample.textContent = `Text sample: \"${finding.sample}\"`;
+      sample.textContent = `Example text: \"${finding.sample}\"`;
       li.appendChild(sample);
     }
 

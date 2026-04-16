@@ -109,12 +109,13 @@
       }
     }
 
-    return dedupeFindings(findings).slice(0, 150);
+    return groupFindings(findings).slice(0, 150);
   }
 
   function collectVisibleTextSamples(maxCount) {
     const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT);
     const samples = [];
+    const seenElements = new Set();
 
     while (walker.nextNode() && samples.length < maxCount) {
       const node = walker.currentNode;
@@ -129,20 +130,27 @@
         continue;
       }
 
-      const style = getComputedStyle(element);
+      const sampleElement = getSampleElement(element);
+      if (!sampleElement || seenElements.has(sampleElement)) {
+        continue;
+      }
+
+      seenElements.add(sampleElement);
+
+      const style = getComputedStyle(sampleElement);
       const fontSizePx = parsePx(style.fontSize);
       const lineHeightPx = parseLineHeightPx(style.lineHeight, fontSizePx);
       const fontWeight = parseFontWeight(style.fontWeight);
       const color = parseCssColor(style.color);
-      const backgroundColor = resolveEffectiveBackgroundColor(element);
+      const backgroundColor = resolveEffectiveBackgroundColor(sampleElement);
 
       if (!color || !backgroundColor || fontSizePx <= 0) {
         continue;
       }
 
       samples.push({
-        element,
-        text,
+        element: sampleElement,
+        text: getVisibleText(sampleElement),
         fontSizePx,
         lineHeightPx,
         fontWeight,
@@ -309,22 +317,139 @@
     if (!text) {
       return "";
     }
-    return text.length > 120 ? `${text.slice(0, 117)}...` : text;
-  }
-
-  function dedupeFindings(items) {
-    const seen = new Set();
-    const result = [];
-
-    for (const item of items) {
-      const key = [item.type, item.selector, item.sample].join("|");
-      if (seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      result.push(item);
+    const normalized = text.replace(/\s+/g, " ").trim();
+    if (normalized.length <= 120) {
+      return normalized;
     }
 
-    return result;
+    const cutIndex = normalized.lastIndexOf(" ", 117);
+    const endIndex = cutIndex > 60 ? cutIndex : 117;
+    return `${normalized.slice(0, endIndex).trimEnd()}...`;
+  }
+
+  function getSampleElement(element) {
+    let current = element;
+
+    while (current && current !== document.body && current !== document.documentElement) {
+      if (isGoodSampleContainer(current)) {
+        return current;
+      }
+      current = current.parentElement;
+    }
+
+    return element;
+  }
+
+  function isGoodSampleContainer(element) {
+    const tag = element.tagName.toLowerCase();
+    if (["p", "li", "blockquote", "dd", "dt", "figcaption", "caption", "td", "th", "button", "a", "label", "summary", "h1", "h2", "h3", "h4", "h5", "h6"].includes(tag)) {
+      return true;
+    }
+
+    const style = getComputedStyle(element);
+    return style.display === "block" || style.display === "flow-root" || style.display === "list-item" || style.display === "grid" || style.display === "flex";
+  }
+
+  function getVisibleText(element) {
+    if (!element) {
+      return "";
+    }
+
+    const text = "innerText" in element ? element.innerText : element.textContent || "";
+    return text.replace(/\s+/g, " ").trim();
+  }
+
+  function groupFindings(items) {
+    const groups = new Map();
+
+    for (const item of items) {
+      const key = item.type;
+      const existing = groups.get(key);
+
+      if (!existing) {
+        groups.set(key, {
+          ...item,
+          sample: trimSample(item.sample),
+          count: 1,
+          selectors: [item.selector],
+          examples: item.sample ? [trimSample(item.sample)] : []
+        });
+        continue;
+      }
+
+      existing.count += 1;
+      existing.selectors.push(item.selector);
+      if (existing.examples.length < 3 && item.sample) {
+        existing.examples.push(trimSample(item.sample));
+      }
+
+      if (severityRank(item.severity) > severityRank(existing.severity)) {
+        existing.severity = item.severity;
+      }
+
+      if (item.details && existing.details) {
+        existing.details = mergeDetails(existing.details, item.details);
+      }
+    }
+
+    return Array.from(groups.values()).map((group) => ({
+      ...group,
+      selector: summarizeSelectors(group.selectors),
+      sample: group.examples[0] || group.sample,
+      recommendation:
+        group.type === "low-contrast-text" && typeof group.details?.requiredRatio === "number"
+          ? `Increase contrast between text and background. Target at least ${group.details.requiredRatio}:1 for the grouped examples.`
+          : group.recommendation,
+      details: {
+        ...group.details,
+        count: group.count,
+        selectors: group.selectors.slice(0, 5),
+        examples: group.examples
+      }
+    }));
+  }
+
+  function severityRank(severity) {
+    if (severity === "high") {
+      return 2;
+    }
+    if (severity === "medium") {
+      return 1;
+    }
+    return 0;
+  }
+
+  function summarizeSelectors(selectors) {
+    const unique = Array.from(new Set(selectors));
+    if (unique.length <= 3) {
+      return unique.join(", ");
+    }
+
+    return `${unique.slice(0, 3).join(", ")} (+${unique.length - 3} more)`;
+  }
+
+  function mergeDetails(existingDetails, newDetails) {
+    const merged = {
+      ...existingDetails,
+      ...newDetails
+    };
+
+    if (typeof existingDetails.requiredRatio === "number" || typeof newDetails.requiredRatio === "number") {
+      merged.requiredRatio = Math.max(existingDetails.requiredRatio ?? 0, newDetails.requiredRatio ?? 0);
+    }
+
+    if (typeof existingDetails.contrastRatio === "number" || typeof newDetails.contrastRatio === "number") {
+      merged.contrastRatio = Math.min(existingDetails.contrastRatio ?? Number.POSITIVE_INFINITY, newDetails.contrastRatio ?? Number.POSITIVE_INFINITY);
+    }
+
+    if (typeof existingDetails.fontSizePx === "number" || typeof newDetails.fontSizePx === "number") {
+      merged.fontSizePx = Math.min(existingDetails.fontSizePx ?? Number.POSITIVE_INFINITY, newDetails.fontSizePx ?? Number.POSITIVE_INFINITY);
+    }
+
+    if (typeof existingDetails.lineHeightPx === "number" || typeof newDetails.lineHeightPx === "number") {
+      merged.lineHeightPx = Math.min(existingDetails.lineHeightPx ?? Number.POSITIVE_INFINITY, newDetails.lineHeightPx ?? Number.POSITIVE_INFINITY);
+    }
+
+    return merged;
   }
 })();
