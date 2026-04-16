@@ -40,61 +40,142 @@ function renderResults(data) {
     `${findings.length} grouped issue${findings.length === 1 ? "" : "s"} found on ${new URL(data.pageUrl).hostname}.`
   );
 
+  const categoryGroups = groupFindingsByCategory(findings);
   const fragment = document.createDocumentFragment();
 
+  categoryGroups.forEach((group, index) => {
+    fragment.appendChild(createCategoryGroup(group, index === 0));
+  });
+
+  findingsEl.appendChild(fragment);
+}
+
+function groupFindingsByCategory(findings) {
+  const groups = new Map();
+
   for (const finding of findings) {
-    const li = document.createElement("li");
-    li.className = `finding severity-${finding.severity}`;
+    const key = finding.category || finding.type || "other";
+    const label = finding.categoryLabel || capitalizeWord(key.replace(/[-_]/g, " "));
+    const existing = groups.get(key);
 
-    const title = document.createElement("p");
-    title.className = "finding-title";
-    title.textContent = finding.summary;
-
-    if (typeof finding.count === "number" && finding.count > 1) {
-      const count = document.createElement("span");
-      count.className = "pill count";
-      count.textContent = `${finding.count} similar`;
-      title.appendChild(count);
+    if (!existing) {
+      groups.set(key, {
+        key,
+        label,
+        findings: [finding],
+        count: finding.count || 1,
+        instances: Array.isArray(finding.instances) ? finding.instances.length : 0,
+        severity: finding.severity
+      });
+      continue;
     }
 
-    const severityPill = document.createElement("span");
-    severityPill.className = `pill ${finding.severity}`;
-    severityPill.textContent = finding.severity;
-    title.appendChild(severityPill);
-
-    const meta = document.createElement("p");
-    meta.className = "finding-meta";
-    meta.textContent = `Where: ${finding.selector}`;
-
-    const why = document.createElement("p");
-    why.className = "finding-why";
-    why.textContent = `Why it matters: ${finding.whyItMatters}`;
-
-    const fix = document.createElement("p");
-    fix.className = "finding-fix";
-    fix.textContent = `Suggested fix: ${finding.recommendation}`;
-
-    li.append(title, meta, why, fix);
-
-    const visualPreview = createFixPreview(finding);
-    if (visualPreview) {
-      li.appendChild(visualPreview);
-    }
-
-    if (finding.sample) {
-      const sample = document.createElement("p");
-      sample.className = "finding-sample";
-      sample.textContent = `Example text: \"${finding.sample}\"`;
-      li.appendChild(sample);
-    }
-
-    const instances = Array.isArray(finding.instances) ? finding.instances : [];
-    if (instances.length > 0) {
-      li.appendChild(createInstanceDetails(instances));
-    }
-
-    fragment.appendChild(li);
+    existing.findings.push(finding);
+    existing.count += finding.count || 1;
+    existing.instances += Array.isArray(finding.instances) ? finding.instances.length : 0;
+    existing.severity = worstSeverity(existing.severity, finding.severity);
   }
+
+  return Array.from(groups.values());
+}
+
+function createCategoryGroup(group, defaultOpen) {
+  const details = document.createElement("details");
+  details.className = `category-group severity-${group.severity}`;
+  if (defaultOpen) {
+    details.open = true;
+  }
+
+  const summary = document.createElement("summary");
+  summary.className = "category-summary";
+
+  const title = document.createElement("span");
+  title.className = "category-title";
+  title.textContent = group.label;
+  summary.appendChild(title);
+
+  const counts = document.createElement("span");
+  counts.className = "category-count";
+  counts.textContent = `${group.findings.length} finding${group.findings.length === 1 ? "" : "s"}`;
+  summary.appendChild(counts);
+
+  const instanceCount = document.createElement("span");
+  instanceCount.className = "category-instance-count";
+  instanceCount.textContent = `${group.instances} instance${group.instances === 1 ? "" : "s"}`;
+  summary.appendChild(instanceCount);
+
+  const body = document.createElement("div");
+  body.className = "category-body";
+
+  for (const finding of group.findings) {
+    body.appendChild(createFindingCard(finding));
+  }
+
+  details.append(summary, body);
+  return details;
+}
+
+function createFindingCard(finding) {
+  const article = document.createElement("details");
+  article.className = `finding severity-${finding.severity}`;
+  article.open = true;
+
+  const summary = document.createElement("summary");
+  summary.className = "finding-summary";
+
+  const title = document.createElement("span");
+  title.className = "finding-title";
+  title.textContent = finding.summary;
+  summary.appendChild(title);
+
+  if (typeof finding.count === "number" && finding.count > 1) {
+    const count = document.createElement("span");
+    count.className = "pill count";
+    count.textContent = `${finding.count} similar`;
+    summary.appendChild(count);
+  }
+
+  const severityPill = document.createElement("span");
+  severityPill.className = `pill ${finding.severity}`;
+  severityPill.textContent = finding.severity;
+  summary.appendChild(severityPill);
+
+  const body = document.createElement("div");
+  body.className = "finding-body";
+
+  const meta = document.createElement("p");
+  meta.className = "finding-meta";
+  meta.textContent = `Where: ${finding.selector}`;
+
+  const why = document.createElement("p");
+  why.className = "finding-why";
+  why.textContent = `Why it matters: ${finding.whyItMatters}`;
+
+  const fix = document.createElement("p");
+  fix.className = "finding-fix";
+  fix.textContent = `Suggested fix: ${finding.recommendation}`;
+
+  body.append(meta, why, fix);
+
+  const visualPreview = createFixPreview(finding);
+  if (visualPreview) {
+    body.appendChild(visualPreview);
+  }
+
+  if (finding.sample) {
+    const sample = document.createElement("p");
+    sample.className = "finding-sample";
+    sample.textContent = `Example text: \"${finding.sample}\"`;
+    body.appendChild(sample);
+  }
+
+  const instances = Array.isArray(finding.instances) ? finding.instances : [];
+  if (instances.length > 0) {
+    body.appendChild(createInstanceDetails(instances));
+  }
+
+  article.append(summary, body);
+  return article;
 
   findingsEl.appendChild(fragment);
 }
@@ -115,6 +196,19 @@ function renderLimitations(limitations) {
 
 function setStatus(message) {
   statusEl.textContent = message;
+}
+
+function worstSeverity(currentSeverity, nextSeverity) {
+  const order = { low: 0, medium: 1, high: 2 };
+  return order[nextSeverity] > order[currentSeverity] ? nextSeverity : currentSeverity;
+}
+
+function capitalizeWord(text) {
+  if (!text) {
+    return "Other";
+  }
+
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 function createInstanceDetails(instances) {

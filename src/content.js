@@ -47,6 +47,8 @@
         const suggestedTextColor = suggestReadableTextColor(backgroundColor, threshold);
         findings.push({
           type: "low-contrast-text",
+          category: "contrast",
+          categoryLabel: "Contrast",
           severity: ratio < threshold - 1 ? "high" : "medium",
           summary: "Text contrast is below recommended minimum for low-vision readability.",
           whyItMatters:
@@ -68,6 +70,8 @@
       if (fontSizePx < 12) {
         findings.push({
           type: "very-small-text",
+          category: "text-size",
+          categoryLabel: "Text size",
           severity: "high",
           summary: "Very small text detected.",
           whyItMatters:
@@ -82,6 +86,8 @@
       } else if (fontSizePx < 14) {
         findings.push({
           type: "small-text",
+          category: "text-size",
+          categoryLabel: "Text size",
           severity: "medium",
           summary: "Small text may reduce readability.",
           whyItMatters:
@@ -98,6 +104,8 @@
       if (text.length > 80 && lineHeightPx > 0 && lineHeightPx < fontSizePx * 1.3) {
         findings.push({
           type: "tight-line-height",
+          category: "spacing",
+          categoryLabel: "Spacing",
           severity: "medium",
           summary: "Line height is tight for a long text block.",
           whyItMatters:
@@ -419,22 +427,23 @@
   function getGroupingKey(item) {
     const selector = normalizeSelectorKey(item.selector);
     const details = item.details || {};
+    const category = item.category || item.type;
 
     if (item.type === "low-contrast-text") {
-      return [item.type, selector, details.requiredRatio ?? "", details.fontSizePx ? Math.round(details.fontSizePx / 2) * 2 : ""].join("|");
+      return [category, selector, details.requiredRatio ?? "", details.fontSizePx ? Math.round(details.fontSizePx / 2) * 2 : ""].join("|");
     }
 
     if (item.type === "very-small-text" || item.type === "small-text") {
-      return [item.type, selector, details.fontSizePx ? Math.round(details.fontSizePx / 2) * 2 : ""].join("|");
+      return [category, selector, details.fontSizePx ? Math.round(details.fontSizePx / 2) * 2 : ""].join("|");
     }
 
     if (item.type === "tight-line-height") {
       const sizeBucket = details.fontSizePx ? Math.round(details.fontSizePx / 2) * 2 : "";
       const lineHeightBucket = details.lineHeightPx ? Math.round(details.lineHeightPx / 2) * 2 : "";
-      return [item.type, selector, sizeBucket, lineHeightBucket].join("|");
+      return [category, selector, sizeBucket, lineHeightBucket].join("|");
     }
 
-    return [item.type, selector].join("|");
+    return [category, selector].join("|");
   }
 
   function normalizeSelectorKey(selector) {
