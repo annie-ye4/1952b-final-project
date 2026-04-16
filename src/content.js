@@ -367,7 +367,7 @@
     const groups = new Map();
 
     for (const item of items) {
-      const key = item.type;
+      const key = getGroupingKey(item);
       const existing = groups.get(key);
 
       if (!existing) {
@@ -414,6 +414,39 @@
       },
       instances: group.instances.slice(0, 60)
     }));
+  }
+
+  function getGroupingKey(item) {
+    const selector = normalizeSelectorKey(item.selector);
+    const details = item.details || {};
+
+    if (item.type === "low-contrast-text") {
+      return [item.type, selector, details.requiredRatio ?? "", details.fontSizePx ? Math.round(details.fontSizePx / 2) * 2 : ""].join("|");
+    }
+
+    if (item.type === "very-small-text" || item.type === "small-text") {
+      return [item.type, selector, details.fontSizePx ? Math.round(details.fontSizePx / 2) * 2 : ""].join("|");
+    }
+
+    if (item.type === "tight-line-height") {
+      const sizeBucket = details.fontSizePx ? Math.round(details.fontSizePx / 2) * 2 : "";
+      const lineHeightBucket = details.lineHeightPx ? Math.round(details.lineHeightPx / 2) * 2 : "";
+      return [item.type, selector, sizeBucket, lineHeightBucket].join("|");
+    }
+
+    return [item.type, selector].join("|");
+  }
+
+  function normalizeSelectorKey(selector) {
+    if (!selector || selector === "unknown") {
+      return "unknown";
+    }
+
+    return selector
+      .replace(/#[^.\s]+/g, "#id")
+      .replace(/\.[^.\s]+/g, ".class")
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
   function makeInstance(item) {
