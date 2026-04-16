@@ -372,13 +372,15 @@
           sample: trimSample(item.sample),
           count: 1,
           selectors: [item.selector],
-          examples: item.sample ? [trimSample(item.sample)] : []
+          examples: item.sample ? [trimSample(item.sample)] : [],
+          items: [item]
         });
         continue;
       }
 
       existing.count += 1;
       existing.selectors.push(item.selector);
+      existing.items.push(item);
       if (existing.examples.length < 3 && item.sample) {
         existing.examples.push(trimSample(item.sample));
       }
@@ -400,6 +402,10 @@
         group.type === "low-contrast-text" && typeof group.details?.requiredRatio === "number"
           ? `Increase contrast between text and background. Target at least ${group.details.requiredRatio}:1 for the grouped examples.`
           : group.recommendation,
+      items: group.items.map((entry) => ({
+        ...entry,
+        sample: trimSample(entry.sample)
+      })),
       details: {
         ...group.details,
         count: group.count,
