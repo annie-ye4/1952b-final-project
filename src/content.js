@@ -55,7 +55,7 @@
           summary: "Text contrast is below recommended minimum for low-vision readability.",
           whyItMatters:
             "People with low vision or reduced contrast sensitivity may struggle to distinguish text from its background, especially on bright screens or in glare.",
-          recommendation: `Contrast ratio of ${threshold}:1 means the brighter color must be ${threshold}x brighter than the darker color for readability. Find the CSS rule affecting this text (check styles.css or inline styles) and adjust either the text color or background color. Example: change from #888 text on #ddd background to #333 on #ddd (or #fff text on #333 background). Use WebAIM Contrast Checker to verify. Consider CSS custom properties: --text-dark: #1a1a1a; --bg-light: #ffffff;`,
+          recommendation: `Contrast ratio ${threshold}:1 required (brighter color must be ${threshold}x luminance of darker)\n• Find: Search styles.css or inline <style> for text/background colors\n• Audit: Use WebAIM Contrast Checker or axe DevTools to verify\n• Fix example: Change #888 text → #333 (dark text on light bg) or #fff text → #000 bg\n• Maintainable: Use CSS variables --text-primary: #1a1a1a; --bg-light: #ffffff;`,
           selector: shortSelector(element),
           sample: trimSample(text),
           details: {
@@ -78,7 +78,7 @@
           summary: "Very small text detected.",
           whyItMatters:
             "Very small text can be unreadable for many low-vision users, even before zooming or magnification is applied.",
-          recommendation: "Find the CSS rule for this element's font-size (check styles.css or inline styles) and increase it to 16px or larger. Use relative units (rem, em) so it scales with browser/user font-size preferences. Example: body { font-size: 16px; } p { font-size: 1rem; } h1 { font-size: 2rem; }. This ensures all text is readable without zoom.",
+          recommendation: "Find font-size in styles.css or inline styles and increase to 16px+\n• Use relative units: rem (recommended) or em for scaling\n• Code: body { font-size: 16px; } then p { font-size: 1rem; } h1 { font-size: 2rem; }\n• Why: Respects user's default font-size preference and browser zoom\n• Test: Zoom to 200% to verify readability",
           selector: shortSelector(element),
           sample: trimSample(text),
           details: {
@@ -94,7 +94,7 @@
           summary: "Small text may reduce readability.",
           whyItMatters:
             "Low-vision users often need larger text to maintain speed and accuracy while reading.",
-          recommendation: "Locate the font-size property in your CSS (search styles.css for this element's class or tag) and increase it to at least 14px. Use rem/em units for scaling: font-size: 0.875rem; becomes font-size: 1rem;. This improves readability without breaking layouts. Test by zooming to 200% in your browser.",
+          recommendation: "Increase font-size to 14px or larger in styles.css\n• Use rem/em units: font-size: 0.875rem → font-size: 1rem\n• Find: Search styles.css for the element's class name or tag\n• Why: Low-vision users need larger text to maintain reading speed\n• Test: Zoom to 200% to ensure layout doesn't break",
           selector: shortSelector(element),
           sample: trimSample(text),
           details: {
@@ -112,7 +112,7 @@
           summary: "Line height is tight for a long text block.",
           whyItMatters:
             "Crowded lines can make tracking from one line to the next difficult, particularly for low-vision readers.",
-          recommendation: "Find the line-height CSS property for this text block (in styles.css or inline) and increase it. Line-height of 1.5+ means each line has 50%+ extra space above the text. Example: p { line-height: 1.6; } or p { line-height: 24px; }. This spacing helps eyes track from one line to the next. Also ensure letter-spacing is normal (not negative).",
+          recommendation: "Increase line-height in styles.css to 1.5 or higher\n• What it is: Line-height 1.5 = 50% extra space between lines (1.5x the text height)\n• Code example: p { line-height: 1.6; } or p { line-height: 24px; }\n• Helps: Eyes can track across long lines without skipping or losing place\n• Also check: Ensure letter-spacing is normal (not negative/compressed)",
           selector: shortSelector(element),
           sample: trimSample(text),
           details: {
