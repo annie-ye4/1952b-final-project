@@ -417,10 +417,6 @@
       ...group,
       selector: summarizeSelectors(group.selectors),
       sample: group.examples[0] || group.sample,
-      recommendation:
-        group.type === "low-contrast-text" && typeof group.details?.requiredRatio === "number"
-          ? `Increase contrast between text and background. Target at least ${group.details.requiredRatio}:1 for the grouped examples.`
-          : group.recommendation,
       details: {
         ...group.details,
         count: group.count,
