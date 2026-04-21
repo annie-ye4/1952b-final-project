@@ -1,4 +1,5 @@
 (() => {
+  // Messages shown in the popup to explain scanner scope and caveats.
   const LIMITATIONS = [
     "Automated checks cannot understand design intent, reading order quality, or whether content is truly understandable.",
     "Color contrast results may be approximate when gradients, images, overlays, transparency, or animations are involved.",
@@ -34,6 +35,7 @@
   });
 
   function runLowVisionAudit() {
+    // Sample visible text blocks, then evaluate readability-related rules.
     const textSamples = collectVisibleTextSamples(800);
     const findings = [];
 
@@ -53,7 +55,7 @@
           summary: "Text contrast is below recommended minimum for low-vision readability.",
           whyItMatters:
             "People with low vision or reduced contrast sensitivity may struggle to distinguish text from its background, especially on bright screens or in glare.",
-          recommendation: `Increase contrast between text and background. Target at least ${threshold}:1 for this text size.`,
+          recommendation: `Increase contrast to at least ${threshold}:1. Use darker text on light backgrounds or lighter text on dark backgrounds. Test with tools like WebAIM or axe DevTools. Consider using CSS custom properties to manage color pairs systematically.`,
           selector: shortSelector(element),
           sample: trimSample(text),
           details: {
@@ -76,7 +78,7 @@
           summary: "Very small text detected.",
           whyItMatters:
             "Very small text can be unreadable for many low-vision users, even before zooming or magnification is applied.",
-          recommendation: "Use a larger default text size (generally 16px body text or larger where practical).",
+          recommendation: "Increase base font size to 16px or larger. Use relative units (rem, em) so sizes scale with user preferences. Set clear typographic hierarchy: body 16px+, headings larger, captions 14px minimum.",
           selector: shortSelector(element),
           sample: trimSample(text),
           details: {
@@ -92,7 +94,7 @@
           summary: "Small text may reduce readability.",
           whyItMatters:
             "Low-vision users often need larger text to maintain speed and accuracy while reading.",
-          recommendation: "Consider increasing text size and preserving layout at browser zoom levels.",
+          recommendation: "Increase to 14px or larger. Use CSS media queries for responsive sizing: @media (prefers-reduced-motion), or set min-font-size. Test at 200% zoom to ensure layout remains intact.",
           selector: shortSelector(element),
           sample: trimSample(text),
           details: {
@@ -110,7 +112,7 @@
           summary: "Line height is tight for a long text block.",
           whyItMatters:
             "Crowded lines can make tracking from one line to the next difficult, particularly for low-vision readers.",
-          recommendation: "Increase line-height to around 1.4-1.6 for paragraph text.",
+          recommendation: "Set line-height: 1.5 or higher for body text, and 1.6–1.8 for paragraphs. Use CSS: p { line-height: 1.6; }. Ensure letter-spacing is normal or slightly increased for clarity.",
           selector: shortSelector(element),
           sample: trimSample(text),
           details: {
@@ -125,6 +127,7 @@
   }
 
   function collectVisibleTextSamples(maxCount) {
+    // Iterate text nodes and promote them to block-like containers for stable sampling.
     const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT);
     const samples = [];
     const seenElements = new Set();
@@ -180,6 +183,7 @@
   }
 
   function isVisible(element) {
+    // Quick visibility gate to avoid hidden/off-layout nodes.
     const style = getComputedStyle(element);
     if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) {
       return false;
@@ -253,6 +257,7 @@
   }
 
   function resolveEffectiveBackgroundColor(element) {
+    // Walk up ancestors and alpha-composite backgrounds into a final color.
     let current = element;
     let color = { r: 255, g: 255, b: 255, a: 1 };
 
@@ -296,6 +301,7 @@
   }
 
   function contrastRatio(foreground, background) {
+    // WCAG contrast ratio formula.
     const fg = relativeLuminance(foreground);
     const bg = relativeLuminance(background);
     const lighter = Math.max(fg, bg);
@@ -372,6 +378,7 @@
   }
 
   function groupFindings(items) {
+    // Merge similar findings while preserving representative examples and worst-case details.
     const groups = new Map();
 
     for (const item of items) {
@@ -425,6 +432,7 @@
   }
 
   function getGroupingKey(item) {
+    // Category-aware keys prevent unrelated issues from collapsing together.
     const selector = normalizeSelectorKey(item.selector);
     const details = item.details || {};
     const category = item.category || item.type;
@@ -447,6 +455,7 @@
   }
 
   function normalizeSelectorKey(selector) {
+    // Normalize noisy id/class tokens to improve grouping stability across pages.
     if (!selector || selector === "unknown") {
       return "unknown";
     }
@@ -487,6 +496,7 @@
   }
 
   function mergeDetails(existingDetails, newDetails) {
+    // Keep the strictest metrics when combining grouped detail payloads.
     const merged = {
       ...existingDetails,
       ...newDetails
@@ -520,6 +530,7 @@
   }
 
   function suggestReadableTextColor(background, threshold) {
+    // Pick black or white based on best achievable contrast against the background.
     const black = { r: 0, g: 0, b: 0, a: 1 };
     const white = { r: 255, g: 255, b: 255, a: 1 };
     const blackRatio = contrastRatio(black, background);

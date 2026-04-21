@@ -1,4 +1,5 @@
 :root {
+  /* Theme tokens used across panels, pills, and severity states. */
   --bg: #f3efe6;
   --ink: #16211a;
   --muted: #4f5d51;
@@ -15,6 +16,7 @@
 }
 
 body {
+  /* Fixed popup footprint with layered background texture. */
   margin: 0;
   width: 380px;
   max-height: 600px;
@@ -55,6 +57,7 @@ body {
 }
 
 .run-btn {
+  /* Main call-to-action button style. */
   border: 1px solid #0f5f59;
   background: linear-gradient(120deg, #115e59, #0f766e);
   color: #f7fff8;
@@ -96,6 +99,7 @@ body {
 }
 
 .category-group {
+  /* Top-level collapsible containers grouped by finding category. */
   border: 1px solid var(--border);
   border-radius: 12px;
   background: #f9f4e7;
@@ -152,6 +156,7 @@ body {
 }
 
 .finding {
+  /* Nested finding card inside each category group. */
   border: 1px solid var(--border);
   border-left: 4px solid var(--accent);
   border-radius: 10px;
@@ -182,7 +187,6 @@ body {
   flex: 1;
 }
 
-.finding-meta,
 .finding-why,
 .finding-fix,
 .finding-sample {
@@ -198,6 +202,7 @@ body {
 }
 
 .fix-preview {
+  /* Before/after visual preview block for suggested fixes. */
   margin-top: 6px;
   padding: 6px;
   border-radius: 8px;
@@ -240,6 +245,7 @@ body {
 }
 
 .finding-instances {
+  /* Expandable list of individual instances represented in one grouped card. */
   margin-top: 6px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -266,7 +272,6 @@ body {
   color: var(--ink);
 }
 
-.instance-where,
 .instance-sample {
   margin: 0;
   line-height: 1.35;
@@ -277,6 +282,7 @@ body {
 }
 
 .pill {
+  /* Shared pill styles for severity and count badges. */
   display: inline-block;
   padding: 1px 6px;
   border-radius: 999px;

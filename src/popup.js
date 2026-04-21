@@ -1,3 +1,4 @@
+// Popup entry points.
 const runBtn = document.getElementById("runAudit");
 const statusEl = document.getElementById("status");
 const findingsEl = document.getElementById("findings");
@@ -6,6 +7,7 @@ const limitationsEl = document.getElementById("limitations");
 runBtn.addEventListener("click", runAudit);
 
 async function runAudit() {
+  // Reset previous output before running a new scan.
   setStatus("Scanning current tab...");
   findingsEl.innerHTML = "";
 
@@ -40,6 +42,7 @@ function renderResults(data) {
     `${findings.length} grouped issue${findings.length === 1 ? "" : "s"} found on ${new URL(data.pageUrl).hostname}.`
   );
 
+  // Group cards at category level so sections can collapse together.
   const categoryGroups = groupFindingsByCategory(findings);
   const fragment = document.createDocumentFragment();
 
@@ -51,6 +54,7 @@ function renderResults(data) {
 }
 
 function groupFindingsByCategory(findings) {
+  // Build category buckets from grouped findings returned by the content script.
   const groups = new Map();
 
   for (const finding of findings) {
@@ -80,6 +84,7 @@ function groupFindingsByCategory(findings) {
 }
 
 function createCategoryGroup(group, defaultOpen) {
+  // Each category renders as a collapsible container with nested finding cards.
   const details = document.createElement("details");
   details.className = `category-group severity-${group.severity}`;
   if (defaultOpen) {
@@ -116,6 +121,7 @@ function createCategoryGroup(group, defaultOpen) {
 }
 
 function createFindingCard(finding) {
+  // Each grouped finding stays collapsible to keep details scannable.
   const article = document.createElement("details");
   article.className = `finding severity-${finding.severity}`;
   article.open = true;
@@ -143,10 +149,6 @@ function createFindingCard(finding) {
   const body = document.createElement("div");
   body.className = "finding-body";
 
-  const meta = document.createElement("p");
-  meta.className = "finding-meta";
-  meta.textContent = `Where: ${finding.selector}`;
-
   const why = document.createElement("p");
   why.className = "finding-why";
   why.textContent = `Why it matters: ${finding.whyItMatters}`;
@@ -155,7 +157,7 @@ function createFindingCard(finding) {
   fix.className = "finding-fix";
   fix.textContent = `Suggested fix: ${finding.recommendation}`;
 
-  body.append(meta, why, fix);
+  body.append(why, fix);
 
   const visualPreview = createFixPreview(finding);
   if (visualPreview) {
@@ -176,11 +178,10 @@ function createFindingCard(finding) {
 
   article.append(summary, body);
   return article;
-
-  findingsEl.appendChild(fragment);
 }
 
 function renderLimitations(limitations) {
+  // Always show at least one reminder about automation limits.
   limitationsEl.innerHTML = "";
 
   const items = limitations.length
@@ -199,6 +200,7 @@ function setStatus(message) {
 }
 
 function worstSeverity(currentSeverity, nextSeverity) {
+  // Bubble category severity to the highest severity seen in that bucket.
   const order = { low: 0, medium: 1, high: 2 };
   return order[nextSeverity] > order[currentSeverity] ? nextSeverity : currentSeverity;
 }
@@ -212,6 +214,7 @@ function capitalizeWord(text) {
 }
 
 function createInstanceDetails(instances) {
+  // Expanded list of individual elements represented by this grouped finding.
   const details = document.createElement("details");
   details.className = "finding-instances";
 
@@ -225,11 +228,6 @@ function createInstanceDetails(instances) {
   for (const instance of instances) {
     const item = document.createElement("li");
     item.className = "instance-item";
-
-    const where = document.createElement("p");
-    where.className = "instance-where";
-    where.textContent = `Where: ${instance.selector || "unknown"}`;
-    item.appendChild(where);
 
     if (instance.sample) {
       const sample = document.createElement("p");
@@ -246,6 +244,7 @@ function createInstanceDetails(instances) {
 }
 
 function createFixPreview(finding) {
+  // Show a compact before/after visual aid for suggested fixes.
   const previewConfig = getPreviewConfig(finding);
   if (!previewConfig) {
     return null;
@@ -272,6 +271,7 @@ function createFixPreview(finding) {
 }
 
 function createPreviewCard(titleText, styleConfig, sampleText) {
+  // Shared renderer for both preview states.
   const card = document.createElement("div");
   card.className = "preview-card";
 
@@ -290,6 +290,7 @@ function createPreviewCard(titleText, styleConfig, sampleText) {
 }
 
 function applyPreviewStyles(element, styleConfig) {
+  // Inline styles keep preview variations local to each card.
   if (styleConfig.color) {
     element.style.color = styleConfig.color;
   }
@@ -305,6 +306,7 @@ function applyPreviewStyles(element, styleConfig) {
 }
 
 function getPreviewConfig(finding) {
+  // Generate preview style pairs for each finding type.
   const details = finding.details || {};
 
   if (finding.type === "low-contrast-text") {

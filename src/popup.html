@@ -8,6 +8,7 @@
   </head>
   <body>
     <main class="app">
+      <!-- Header: product title and scope statement. -->
       <header class="hero">
         <p class="eyebrow">Accessibility Focus</p>
         <h1>Low Vision Checker</h1>
@@ -16,14 +17,17 @@
         </p>
       </header>
 
-      <button id="runAudit" class="run-btn" type="button">Run audit on this tab</button>
+      <!-- Primary action: triggers content-script audit for current tab. -->
+      <button id="runAudit" class="run-btn" type="button">Run</button>
 
+      <!-- Results: live status plus grouped, collapsible findings. -->
       <section class="panel" aria-live="polite">
         <h2>Results</h2>
         <p id="status" class="status">Ready to scan.</p>
         <ul id="findings" class="findings"></ul>
       </section>
 
+      <!-- Limitations: reminders about what automated checks cannot infer. -->
       <section class="panel limits">
         <h2>Limits of automated checks</h2>
         <ul id="limitations" class="limitations"></ul>
