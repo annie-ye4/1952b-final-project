@@ -55,7 +55,7 @@
           summary: "Text contrast is below recommended minimum for low-vision readability.",
           whyItMatters:
             "People with low vision or reduced contrast sensitivity may struggle to distinguish text from its background, especially on bright screens or in glare.",
-          recommendation: `Increase contrast to at least ${threshold}:1. Use darker text on light backgrounds or lighter text on dark backgrounds. Test with tools like WebAIM or axe DevTools. Consider using CSS custom properties to manage color pairs systematically.`,
+          recommendation: `Contrast ratio of ${threshold}:1 means the brighter color must be ${threshold}x brighter than the darker color for readability. Find the CSS rule affecting this text (check styles.css or inline styles) and adjust either the text color or background color. Example: change from #888 text on #ddd background to #333 on #ddd (or #fff text on #333 background). Use WebAIM Contrast Checker to verify. Consider CSS custom properties: --text-dark: #1a1a1a; --bg-light: #ffffff;`,
           selector: shortSelector(element),
           sample: trimSample(text),
           details: {
@@ -78,7 +78,7 @@
           summary: "Very small text detected.",
           whyItMatters:
             "Very small text can be unreadable for many low-vision users, even before zooming or magnification is applied.",
-          recommendation: "Increase base font size to 16px or larger. Use relative units (rem, em) so sizes scale with user preferences. Set clear typographic hierarchy: body 16px+, headings larger, captions 14px minimum.",
+          recommendation: "Find the CSS rule for this element's font-size (check styles.css or inline styles) and increase it to 16px or larger. Use relative units (rem, em) so it scales with browser/user font-size preferences. Example: body { font-size: 16px; } p { font-size: 1rem; } h1 { font-size: 2rem; }. This ensures all text is readable without zoom.",
           selector: shortSelector(element),
           sample: trimSample(text),
           details: {
@@ -94,7 +94,7 @@
           summary: "Small text may reduce readability.",
           whyItMatters:
             "Low-vision users often need larger text to maintain speed and accuracy while reading.",
-          recommendation: "Increase to 14px or larger. Use CSS media queries for responsive sizing: @media (prefers-reduced-motion), or set min-font-size. Test at 200% zoom to ensure layout remains intact.",
+          recommendation: "Locate the font-size property in your CSS (search styles.css for this element's class or tag) and increase it to at least 14px. Use rem/em units for scaling: font-size: 0.875rem; becomes font-size: 1rem;. This improves readability without breaking layouts. Test by zooming to 200% in your browser.",
           selector: shortSelector(element),
           sample: trimSample(text),
           details: {
@@ -112,7 +112,7 @@
           summary: "Line height is tight for a long text block.",
           whyItMatters:
             "Crowded lines can make tracking from one line to the next difficult, particularly for low-vision readers.",
-          recommendation: "Set line-height: 1.5 or higher for body text, and 1.6–1.8 for paragraphs. Use CSS: p { line-height: 1.6; }. Ensure letter-spacing is normal or slightly increased for clarity.",
+          recommendation: "Find the line-height CSS property for this text block (in styles.css or inline) and increase it. Line-height of 1.5+ means each line has 50%+ extra space above the text. Example: p { line-height: 1.6; } or p { line-height: 24px; }. This spacing helps eyes track from one line to the next. Also ensure letter-spacing is normal (not negative).",
           selector: shortSelector(element),
           sample: trimSample(text),
           details: {
