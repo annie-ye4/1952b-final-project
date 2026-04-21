@@ -1,4 +1,8 @@
 (() => {
+  let activeHighlightCleanup = null;
+  const auditTargets = new Map();
+  let auditTargetCounter = 0;
+
   // Messages shown in the popup to explain scanner scope and caveats.
   const LIMITATIONS = [
     "Automated checks cannot understand design intent, reading order quality, or whether content is truly understandable.",
@@ -8,63 +12,91 @@
   ];
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (!message || message.type !== "RUN_LOW_VISION_AUDIT") {
+    if (!message || !message.type) {
       return;
     }
 
-    try {
-      const findings = runLowVisionAudit();
-      sendResponse({
-        ok: true,
-        impairmentFocus: "Low vision (contrast sensitivity/readability)",
-        findings,
-        limitations: LIMITATIONS,
-        scannedAt: new Date().toISOString(),
-        pageTitle: document.title || "Untitled page",
-        pageUrl: location.href
-      });
-    } catch (error) {
-      sendResponse({
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-        limitations: LIMITATIONS
-      });
+    if (message.type === "RUN_LOW_VISION_AUDIT") {
+      try {
+        const findings = runLowVisionAudit();
+        sendResponse({
+          ok: true,
+          impairmentFocus: "Low vision (contrast sensitivity/readability)",
+          findings,
+          limitations: LIMITATIONS,
+          scannedAt: new Date().toISOString(),
+          pageTitle: document.title || "Untitled page",
+          pageUrl: location.href
+        });
+      } catch (error) {
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+          limitations: LIMITATIONS
+        });
+      }
+
+      return true;
     }
 
-    return true;
+    if (message.type === "HIGHLIGHT_AUDIT_TARGET") {
+      const target = findHighlightTarget(message.targetId, message.targetSelector, message.sample);
+      if (!target) {
+        sendResponse({ ok: false, error: "Could not locate that element on the current page." });
+        return true;
+      }
+
+      highlightElement(target);
+      sendResponse({ ok: true });
+      return true;
+    }
   });
 
   function runLowVisionAudit() {
     // Sample visible text blocks, then evaluate readability-related rules.
+    auditTargets.clear();
+    auditTargetCounter = 0;
     const textSamples = collectVisibleTextSamples(800);
     const findings = [];
 
     for (const sample of textSamples) {
-      const { element, text, fontSizePx, lineHeightPx, fontWeight, color, backgroundColor } = sample;
+      const { element, text, fontSizePx, lineHeightPx, fontWeight, color, backgroundColor, complexBackground } = sample;
       const ratio = contrastRatio(color, backgroundColor);
       const largeText = isLargeText(fontSizePx, fontWeight);
       const threshold = largeText ? 3.0 : 4.5;
 
       if (ratio < threshold) {
         const suggestedTextColor = suggestReadableTextColor(backgroundColor, threshold);
+        const isComplexContrast = Boolean(complexBackground && complexBackground.isComplex);
         findings.push({
-          type: "low-contrast-text",
+          type: isComplexContrast ? "low-contrast-complex-background" : "low-contrast-text",
           category: "contrast",
           categoryLabel: "Contrast",
+          subtype: isComplexContrast ? "text-on-image-or-gradient" : "standard-background",
+          confidence: isComplexContrast ? "low" : "high",
           severity: ratio < threshold - 1 ? "high" : "medium",
-          summary: "Text contrast is below recommended minimum for low-vision readability.",
+          summary: isComplexContrast
+            ? "Text over image/gradient appears below recommended contrast (approximate)."
+            : "Text contrast is below recommended minimum for low-vision readability.",
           whyItMatters:
             "People with low vision or reduced contrast sensitivity may struggle to distinguish text from its background, especially on bright screens or in glare.",
-          recommendation: `Contrast ratio ${threshold}:1 required (brighter color must be ${threshold}x luminance of darker)\n• Find: Search styles.css or inline <style> for text/background colors\n• Audit: Use WebAIM Contrast Checker or axe DevTools to verify\n• Fix example: Change #888 text → #333 (dark text on light bg) or #fff text → #000 bg\n• Maintainable: Use CSS variables --text-primary: #1a1a1a; --bg-light: #ffffff;`,
+          recommendation: isComplexContrast
+            ? `Contrast ratio ${threshold}:1 required, but this measurement is approximate because the background is image/gradient-based\n• Find: Check CSS background-image/gradient on this region and any overlays\n• Stabilize: Add a solid overlay behind text (for example rgba(255,255,255,0.88) or rgba(0,0,0,0.55))\n• Fix example: .hero-copy { background: rgba(0,0,0,0.58); color: #fff; }\n• Verify: Test multiple points of the image because contrast may vary across the surface`
+            : `Contrast ratio ${threshold}:1 required (brighter color must be ${threshold}x luminance of darker)\n• Find: Search styles.css or inline <style> for text/background colors\n• Audit: Use WebAIM Contrast Checker or axe DevTools to verify\n• Fix example: Change #888 text → #333 (dark text on light bg) or #fff text → #000 bg\n• Maintainable: Use CSS variables --text-primary: #1a1a1a; --bg-light: #ffffff;`,
           selector: shortSelector(element),
+          targetId: registerAuditTarget(element),
+          targetSelector: buildTargetSelector(element),
           sample: trimSample(text),
+          wcag: getWcagMapping(isComplexContrast ? "low-contrast-complex-background" : "low-contrast-text", { largeText }),
           details: {
             contrastRatio: Number(ratio.toFixed(2)),
             requiredRatio: threshold,
             fontSizePx: Number(fontSizePx.toFixed(2)),
             textColor: colorToCss(color),
             backgroundColor: colorToCss(backgroundColor),
-            suggestedTextColor
+            suggestedTextColor,
+            complexBackground: Boolean(complexBackground && complexBackground.isComplex),
+            complexBackgroundReason: complexBackground?.reason || ""
           }
         });
       }
@@ -80,7 +112,10 @@
             "Very small text can be unreadable for many low-vision users, even before zooming or magnification is applied.",
           recommendation: "Find font-size in styles.css or inline styles and increase to 16px+\n• Use relative units: rem (recommended) or em for scaling\n• Code: body { font-size: 16px; } then p { font-size: 1rem; } h1 { font-size: 2rem; }\n• Why: Respects user's default font-size preference and browser zoom\n• Test: Zoom to 200% to verify readability",
           selector: shortSelector(element),
+          targetId: registerAuditTarget(element),
+          targetSelector: buildTargetSelector(element),
           sample: trimSample(text),
+          wcag: getWcagMapping("very-small-text"),
           details: {
             fontSizePx: Number(fontSizePx.toFixed(2))
           }
@@ -96,7 +131,10 @@
             "Low-vision users often need larger text to maintain speed and accuracy while reading.",
           recommendation: "Increase font-size to 14px or larger in styles.css\n• Use rem/em units: font-size: 0.875rem → font-size: 1rem\n• Find: Search styles.css for the element's class name or tag\n• Why: Low-vision users need larger text to maintain reading speed\n• Test: Zoom to 200% to ensure layout doesn't break",
           selector: shortSelector(element),
+          targetId: registerAuditTarget(element),
+          targetSelector: buildTargetSelector(element),
           sample: trimSample(text),
+          wcag: getWcagMapping("small-text"),
           details: {
             fontSizePx: Number(fontSizePx.toFixed(2))
           }
@@ -114,7 +152,10 @@
             "Crowded lines can make tracking from one line to the next difficult, particularly for low-vision readers.",
           recommendation: "Increase line-height in styles.css to 1.5 or higher\n• What it is: Line-height 1.5 = 50% extra space between lines (1.5x the text height)\n• Code example: p { line-height: 1.6; } or p { line-height: 24px; }\n• Helps: Eyes can track across long lines without skipping or losing place\n• Also check: Ensure letter-spacing is normal (not negative/compressed)",
           selector: shortSelector(element),
+          targetId: registerAuditTarget(element),
+          targetSelector: buildTargetSelector(element),
           sample: trimSample(text),
+          wcag: getWcagMapping("tight-line-height"),
           details: {
             fontSizePx: Number(fontSizePx.toFixed(2)),
             lineHeightPx: Number(lineHeightPx.toFixed(2))
@@ -158,6 +199,7 @@
       const fontWeight = parseFontWeight(style.fontWeight);
       const color = parseCssColor(style.color);
       const backgroundColor = resolveEffectiveBackgroundColor(sampleElement);
+      const complexBackground = detectComplexBackground(sampleElement);
 
       if (!color || !backgroundColor || fontSizePx <= 0) {
         continue;
@@ -170,7 +212,8 @@
         lineHeightPx,
         fontWeight,
         color,
-        backgroundColor
+        backgroundColor,
+        complexBackground
       });
     }
 
@@ -273,6 +316,30 @@
     }
 
     return { r: color.r, g: color.g, b: color.b, a: 1 };
+  }
+
+  function detectComplexBackground(element) {
+    let current = element;
+
+    while (current && current !== document.documentElement) {
+      const style = getComputedStyle(current);
+      const backgroundImage = style.backgroundImage || "none";
+
+      if (backgroundImage !== "none") {
+        const lowered = backgroundImage.toLowerCase();
+        if (lowered.includes("gradient(")) {
+          return { isComplex: true, reason: "gradient background" };
+        }
+        if (lowered.includes("url(")) {
+          return { isComplex: true, reason: "image background" };
+        }
+        return { isComplex: true, reason: "non-solid background image" };
+      }
+
+      current = current.parentElement;
+    }
+
+    return { isComplex: false, reason: "solid background" };
   }
 
   function compositeColors(foreground, background) {
@@ -433,7 +500,7 @@
     const details = item.details || {};
     const category = item.category || item.type;
 
-    if (item.type === "low-contrast-text") {
+    if (item.type === "low-contrast-text" || item.type === "low-contrast-complex-background") {
       return [category, selector, details.requiredRatio ?? "", details.fontSizePx ? Math.round(details.fontSizePx / 2) * 2 : ""].join("|");
     }
 
@@ -466,10 +533,139 @@
   function makeInstance(item) {
     return {
       selector: item.selector,
+      targetId: item.targetId,
+      targetSelector: item.targetSelector,
       sample: trimSample(item.sample),
       severity: item.severity,
       details: item.details
     };
+  }
+
+  function registerAuditTarget(element) {
+    if (!element) {
+      return "";
+    }
+
+    auditTargetCounter += 1;
+    const id = `lv-target-${auditTargetCounter}`;
+    auditTargets.set(id, element);
+    return id;
+  }
+
+  function buildTargetSelector(element) {
+    if (!element || !element.tagName) {
+      return "";
+    }
+
+    if (element.id) {
+      return `#${cssEscapeValue(element.id)}`;
+    }
+
+    const parts = [];
+    let current = element;
+
+    while (current && current.nodeType === Node.ELEMENT_NODE && current !== document.body) {
+      const tag = current.tagName.toLowerCase();
+      let index = 1;
+      let sibling = current;
+
+      while ((sibling = sibling.previousElementSibling)) {
+        if (sibling.tagName.toLowerCase() === tag) {
+          index += 1;
+        }
+      }
+
+      parts.unshift(`${tag}:nth-of-type(${index})`);
+
+      if (current.id) {
+        parts.unshift(`#${cssEscapeValue(current.id)}`);
+        break;
+      }
+
+      current = current.parentElement;
+    }
+
+    return parts.join(" > ");
+  }
+
+  function cssEscapeValue(value) {
+    if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+      return CSS.escape(value);
+    }
+
+    return String(value).replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+  }
+
+  function findHighlightTarget(targetId, targetSelector, sample) {
+    const byId = typeof targetId === "string" ? auditTargets.get(targetId) : null;
+    if (byId && byId.isConnected) {
+      return byId;
+    }
+
+    const selector = typeof targetSelector === "string" ? targetSelector.trim() : "";
+    const textSample = normalizeSample(sample);
+
+    if (!selector) {
+      return null;
+    }
+
+    try {
+      const matches = Array.from(document.querySelectorAll(selector));
+      if (matches.length === 0) {
+        return null;
+      }
+
+      if (!textSample) {
+        return matches[0];
+      }
+
+      const byText = matches.find((el) => normalizeSample(getVisibleText(el)).includes(textSample));
+      return byText || matches[0];
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function normalizeSample(text) {
+    return String(text || "")
+      .replace(/\.\.\./g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+  }
+
+  function highlightElement(element) {
+    if (typeof activeHighlightCleanup === "function") {
+      activeHighlightCleanup();
+      activeHighlightCleanup = null;
+    }
+
+    const previousOutline = element.style.outline;
+    const previousOutlineOffset = element.style.outlineOffset;
+    const previousBoxShadow = element.style.boxShadow;
+    const previousTransition = element.style.transition;
+
+    element.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+
+    element.style.transition = `${previousTransition ? `${previousTransition}, ` : ""}outline-color 120ms ease-out, box-shadow 120ms ease-out`;
+    element.style.outline = "3px solid #0f766e";
+    element.style.outlineOffset = "3px";
+    element.style.boxShadow = "0 0 0 4px rgba(15, 118, 110, 0.25)";
+
+    const timeoutId = window.setTimeout(() => {
+      cleanup();
+      activeHighlightCleanup = null;
+    }, 2200);
+
+    function cleanup() {
+      window.clearTimeout(timeoutId);
+      element.style.outline = previousOutline;
+      element.style.outlineOffset = previousOutlineOffset;
+      element.style.boxShadow = previousBoxShadow;
+      element.style.transition = previousTransition;
+    }
+
+    activeHighlightCleanup = cleanup;
   }
 
   function severityRank(severity) {
@@ -547,5 +743,45 @@
     const g = Math.round(color.g);
     const b = Math.round(color.b);
     return `rgb(${r}, ${g}, ${b})`;
+  }
+
+  function getWcagMapping(type, context = {}) {
+    if (type === "low-contrast-text") {
+      return {
+        criteria: ["WCAG 2.2 SC 1.4.3 Contrast (Minimum)"],
+        rationale: context.largeText
+          ? "Large text must meet at least 3:1 contrast so users with reduced contrast sensitivity can still distinguish glyph edges."
+          : "Body-sized text must meet at least 4.5:1 contrast so users with low vision can read without excessive zoom or strain."
+      };
+    }
+
+    if (type === "low-contrast-complex-background") {
+      return {
+        criteria: ["WCAG 2.2 SC 1.4.3 Contrast (Minimum)"],
+        rationale:
+          "Image and gradient backgrounds create localized contrast changes; add consistent overlays or text containers so contrast remains sufficient across all regions."
+      };
+    }
+
+    if (type === "very-small-text" || type === "small-text") {
+      return {
+        criteria: ["WCAG 2.2 SC 1.4.4 Resize Text", "WCAG 2.2 SC 1.4.10 Reflow"],
+        rationale:
+          "Small base text increases magnification dependence and can break usability when users zoom to 200%; readable base sizing improves both resize and reflow outcomes."
+      };
+    }
+
+    if (type === "tight-line-height") {
+      return {
+        criteria: ["WCAG 2.2 SC 1.4.12 Text Spacing"],
+        rationale:
+          "Dense line spacing makes line tracking harder for low-vision readers; supporting looser spacing reduces skipped lines and reading fatigue."
+      };
+    }
+
+    return {
+      criteria: [],
+      rationale: "Mapped rationale unavailable."
+    };
   }
 })();

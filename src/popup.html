@@ -13,7 +13,7 @@
         <p class="eyebrow">Accessibility Focus</p>
         <h1>Low Vision Checker</h1>
         <p class="subtitle">
-          Detects common readability barriers for people with low vision, then explains why each issue matters.
+          Detects common readability barriers for people with low vision, offering suggestions for improvement for developers.
         </p>
       </header>
 
@@ -23,6 +23,10 @@
       <!-- Results: live status plus grouped, collapsible findings. -->
       <section class="panel" aria-live="polite">
         <h2>Results</h2>
+        <label class="results-mode" for="prioritizeMode">
+          <input id="prioritizeMode" type="checkbox" />
+          Fix first mode (highest impact first)
+        </label>
         <p id="status" class="status">Ready to scan.</p>
         <ul id="findings" class="findings"></ul>
       </section>

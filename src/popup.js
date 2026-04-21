@@ -3,8 +3,16 @@ const runBtn = document.getElementById("runAudit");
 const statusEl = document.getElementById("status");
 const findingsEl = document.getElementById("findings");
 const limitationsEl = document.getElementById("limitations");
+const prioritizeModeEl = document.getElementById("prioritizeMode");
+let activeTabId = null;
+let latestResults = null;
 
 runBtn.addEventListener("click", runAudit);
+prioritizeModeEl.addEventListener("change", () => {
+  if (latestResults) {
+    renderResults(latestResults);
+  }
+});
 
 async function runAudit() {
   // Reset previous output before running a new scan.
@@ -16,6 +24,8 @@ async function runAudit() {
     if (!tab || typeof tab.id !== "number") {
       throw new Error("Could not find the active tab.");
     }
+
+    activeTabId = tab.id;
 
     const response = await chrome.tabs.sendMessage(tab.id, { type: "RUN_LOW_VISION_AUDIT" });
 
@@ -31,7 +41,9 @@ async function runAudit() {
 }
 
 function renderResults(data) {
+  latestResults = data;
   const findings = Array.isArray(data.findings) ? data.findings : [];
+  findingsEl.innerHTML = "";
 
   if (findings.length === 0) {
     setStatus("No targeted low-vision issues found in sampled text. This is not a full compliance guarantee.");
@@ -43,11 +55,11 @@ function renderResults(data) {
   );
 
   // Group cards at category level so sections can collapse together.
-  const categoryGroups = groupFindingsByCategory(findings);
+  const categoryGroups = groupFindingsByCategory(findings, prioritizeModeEl.checked);
   const fragment = document.createDocumentFragment();
 
-  categoryGroups.forEach((group, index) => {
-    fragment.appendChild(createCategoryGroup(group, index === 0));
+  categoryGroups.forEach((group) => {
+    fragment.appendChild(createCategoryGroup(group, false));
   });
 
   findingsEl.appendChild(fragment);
@@ -80,7 +92,22 @@ function groupFindingsByCategory(findings) {
     existing.severity = worstSeverity(existing.severity, finding.severity);
   }
 
-  return Array.from(groups.values());
+  const orderedGroups = Array.from(groups.values());
+  const prioritize = prioritizeModeEl.checked;
+
+  for (const group of orderedGroups) {
+    group.findings.sort((left, right) => compareFindings(left, right, prioritize));
+  }
+
+  if (prioritize) {
+    orderedGroups.sort((left, right) => {
+      const leftTop = left.findings[0] || {};
+      const rightTop = right.findings[0] || {};
+      return compareFindings(leftTop, rightTop, true);
+    });
+  }
+
+  return orderedGroups;
 }
 
 function createCategoryGroup(group, defaultOpen) {
@@ -146,6 +173,13 @@ function createFindingCard(finding) {
   severityPill.textContent = finding.severity;
   summary.appendChild(severityPill);
 
+  if (finding.confidence) {
+    const confidencePill = document.createElement("span");
+    confidencePill.className = `pill confidence confidence-${finding.confidence}`;
+    confidencePill.textContent = `${finding.confidence} confidence`;
+    summary.appendChild(confidencePill);
+  }
+
   const body = document.createElement("div");
   body.className = "finding-body";
 
@@ -155,9 +189,14 @@ function createFindingCard(finding) {
 
   const fix = document.createElement("p");
   fix.className = "finding-fix";
-  fix.textContent = `Suggested fix: ${finding.recommendation}`;
+  fix.textContent = `Suggested fix:\n${formatRecommendationBullets(finding.recommendation)}`;
 
   body.append(why, fix);
+
+  const wcagBlock = createWcagBlock(finding);
+  if (wcagBlock) {
+    body.appendChild(wcagBlock);
+  }
 
   const visualPreview = createFixPreview(finding);
   if (visualPreview) {
@@ -213,6 +252,21 @@ function capitalizeWord(text) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+function formatRecommendationBullets(recommendation) {
+  const lines = String(recommendation || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) {
+    return "• No recommendation provided.";
+  }
+
+  return lines
+    .map((line) => (line.startsWith("•") ? line : `• ${line}`))
+    .join("\n");
+}
+
 function createInstanceDetails(instances) {
   // Expanded list of individual elements represented by this grouped finding.
   const details = document.createElement("details");
@@ -236,11 +290,144 @@ function createInstanceDetails(instances) {
       item.appendChild(sample);
     }
 
+    const showBtn = document.createElement("button");
+    showBtn.type = "button";
+    showBtn.className = "instance-action";
+    showBtn.textContent = "Show on page";
+    showBtn.disabled = !canHighlightInstance(instance);
+    showBtn.addEventListener("click", () => highlightInstance(showBtn, instance));
+    item.appendChild(showBtn);
+
     list.appendChild(item);
   }
 
   details.appendChild(list);
   return details;
+}
+
+async function highlightInstance(button, instance) {
+  if (!activeTabId || !canHighlightInstance(instance)) {
+    setStatus("Run the audit again before using Show on page.");
+    return;
+  }
+
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = "Highlighting...";
+
+  try {
+    const response = await chrome.tabs.sendMessage(activeTabId, {
+      type: "HIGHLIGHT_AUDIT_TARGET",
+      targetId: instance.targetId || "",
+      targetSelector: instance.targetSelector,
+      sample: instance.sample || ""
+    });
+
+    if (!response || !response.ok) {
+      throw new Error(response?.error || "Could not highlight element.");
+    }
+
+    setStatus("Highlighted element on page.");
+    button.textContent = "Highlighted";
+    window.setTimeout(() => {
+      button.textContent = original;
+      button.disabled = !canHighlightInstance(instance);
+    }, 900);
+  } catch (error) {
+    setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    button.textContent = original;
+    button.disabled = !canHighlightInstance(instance);
+  }
+}
+
+function canHighlightInstance(instance) {
+  return Boolean(instance && (instance.targetId || instance.targetSelector));
+}
+
+function compareFindings(left, right, prioritize) {
+  if (!prioritize) {
+    return severityRank(right?.severity) - severityRank(left?.severity);
+  }
+
+  const impactDelta = getImpactScore(right) - getImpactScore(left);
+  if (impactDelta !== 0) {
+    return impactDelta;
+  }
+
+  return severityRank(right?.severity) - severityRank(left?.severity);
+}
+
+function getImpactScore(finding) {
+  const severityWeight = severityRank(finding?.severity) + 1;
+  const count = typeof finding?.count === "number" && finding.count > 0 ? finding.count : 1;
+  const instances = Array.isArray(finding?.instances) ? finding.instances.length : count;
+  return severityWeight * Math.max(count, instances);
+}
+
+function severityRank(severity) {
+  if (severity === "high") {
+    return 2;
+  }
+  if (severity === "medium") {
+    return 1;
+  }
+  return 0;
+}
+
+function createWcagBlock(finding) {
+  const wcag = finding.wcag || fallbackWcagMapping(finding.type);
+  const criteria = Array.isArray(wcag.criteria) ? wcag.criteria.filter(Boolean) : [];
+
+  if (criteria.length === 0 && !wcag.rationale) {
+    return null;
+  }
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "wcag-block";
+
+  if (criteria.length > 0) {
+    const criteriaEl = document.createElement("p");
+    criteriaEl.className = "wcag-criteria";
+    criteriaEl.textContent = `WCAG mapping: ${criteria.join("; ")}`;
+    wrapper.appendChild(criteriaEl);
+  }
+
+  if (wcag.rationale) {
+    const rationaleEl = document.createElement("p");
+    rationaleEl.className = "wcag-rationale";
+    rationaleEl.textContent = `Rationale: ${wcag.rationale}`;
+    wrapper.appendChild(rationaleEl);
+  }
+
+  return wrapper;
+}
+
+function fallbackWcagMapping(type) {
+  if (type === "low-contrast-text" || type === "low-contrast-complex-background") {
+    return {
+      criteria: ["WCAG 2.2 SC 1.4.3 Contrast (Minimum)"],
+      rationale:
+        type === "low-contrast-complex-background"
+          ? "Image/gradient regions can vary in local contrast, so overlays or text containers are often needed to keep contrast consistently readable."
+          : "Contrast requirements preserve text distinguishability for users with reduced contrast sensitivity."
+    };
+  }
+
+  if (type === "very-small-text" || type === "small-text") {
+    return {
+      criteria: ["WCAG 2.2 SC 1.4.4 Resize Text", "WCAG 2.2 SC 1.4.10 Reflow"],
+      rationale: "Readable base text sizing reduces zoom burden and helps maintain usable layout at 200% zoom."
+    };
+  }
+
+  if (type === "tight-line-height") {
+    return {
+      criteria: ["WCAG 2.2 SC 1.4.12 Text Spacing"],
+      rationale: "Support for increased line spacing improves line tracking and reduces reading fatigue."
+    };
+  }
+
+  return { criteria: [], rationale: "" };
 }
 
 function createFixPreview(finding) {
@@ -309,7 +496,7 @@ function getPreviewConfig(finding) {
   // Generate preview style pairs for each finding type.
   const details = finding.details || {};
 
-  if (finding.type === "low-contrast-text") {
+  if (finding.type === "low-contrast-text" || finding.type === "low-contrast-complex-background") {
     return {
       before: {
         color: details.textColor || "rgb(125, 125, 125)",
