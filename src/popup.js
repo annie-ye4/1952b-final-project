@@ -173,13 +173,6 @@ function createFindingCard(finding) {
   severityPill.textContent = finding.severity;
   summary.appendChild(severityPill);
 
-  if (finding.confidence) {
-    const confidencePill = document.createElement("span");
-    confidencePill.className = `pill confidence confidence-${finding.confidence}`;
-    confidencePill.textContent = `${finding.confidence} confidence`;
-    summary.appendChild(confidencePill);
-  }
-
   const body = document.createElement("div");
   body.className = "finding-body";
 

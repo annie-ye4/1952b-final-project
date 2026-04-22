@@ -73,7 +73,6 @@
           category: "contrast",
           categoryLabel: "Contrast",
           subtype: isComplexContrast ? "text-on-image-or-gradient" : "standard-background",
-          confidence: isComplexContrast ? "low" : "high",
           severity: ratio < threshold - 1 ? "high" : "medium",
           summary: isComplexContrast
             ? "Text over image/gradient appears below recommended contrast (approximate)."
