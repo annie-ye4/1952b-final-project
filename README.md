@@ -49,14 +49,6 @@ Automated checks have inherent limitations. This tool **cannot**:
 - Cover all disability needs or all WCAG success criteria
 - Replace manual testing with real users or assistive technology
 
-### What You Still Need to Do
-
-- Test with zoom and high-contrast modes enabled
-- Use assistive technologies like screen readers and screen magnification
-- Conduct manual testing with real users who have low vision
-- Review color contrast for animated or moving elements
-- Verify readability across different devices and lighting conditions
-
 ## Technical Details
 
 ### How It Works
@@ -68,20 +60,3 @@ Automated checks have inherent limitations. This tool **cannot**:
    - Background complexity (solid color vs. image/gradient)
 3. It compares measured ratios against WCAG AA standards
 4. Issues are grouped by category and severity for easy review
-
-### Complex Backgrounds
-
-When text appears over images or gradients, the reported contrast ratio is **approximate**. This is because:
-- Colors vary across the background
-- Multiple overlays may be present
-- Transparency and animations can affect perceived contrast
-
-For these cases, the recommendation is to add a solid, semi-transparent overlay behind the text to ensure consistent, measurable contrast.
-
-## Contributing & Feedback
-
-This extension focuses specifically on low-vision readability signals. If you have suggestions for improvements or encounter false positives/negatives, please report them.
-
-## License
-
-This project is created for CS 1952B at Brown University.
